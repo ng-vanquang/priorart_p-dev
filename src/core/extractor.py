@@ -121,17 +121,19 @@ class ExtractionState(TypedDict):
 class CoreConceptExtractor:
     """Patent seed keyword extraction system"""
     
-    def __init__(self, model_name: str = None, use_checkpointer: bool = None):
+    def __init__(self, model_name: str = None, use_checkpointer: bool = None, custom_evaluation_handler=None):
         """
         Initialize the CoreConceptExtractor.
         
         Args:
             model_name: Name of the LLM model to use
             use_checkpointer: Whether to use checkpointer for graph state
+            custom_evaluation_handler: Optional custom handler for human evaluation (for UI integration)
         """
         # Use settings from config file with fallback to parameters
         self.model_name = model_name if model_name is not None else settings.DEFAULT_MODEL_NAME
         self.use_checkpointer = use_checkpointer if use_checkpointer is not None else settings.USE_CHECKPOINTER
+        self.custom_evaluation_handler = custom_evaluation_handler
 
         self.llm = Ollama(model=self.model_name, temperature=settings.MODEL_TEMPERATURE, num_ctx=settings.NUM_CTX)
         self.tavily_search = TavilySearch(
@@ -297,6 +299,12 @@ class CoreConceptExtractor:
     
     def step3_human_evaluation(self, state: ExtractionState) -> ExtractionState:
         """Step 3: Human in the loop evaluation with three options"""
+        
+        # If custom evaluation handler is provided (e.g., for Streamlit UI), use it
+        if self.custom_evaluation_handler:
+            return self.custom_evaluation_handler(state)
+        
+        # Otherwise, use the original command-line interface
         msgs = self.validation_messages
         
         print("\n" + msgs["separator"])

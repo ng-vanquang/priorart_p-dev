@@ -79,7 +79,54 @@ cp .env.example .env
 
 ## 🎮 Sử Dụng
 
-### Chạy Ứng Dụng Chính
+### 🎭 Demo Mode - Khuyến Nghị cho Test/Demo
+
+```bash
+# Không cần LLM infrastructure - sử dụng mock responses
+python run_demo.py
+# hoặc
+streamlit run streamlit_demo_app.py --server.port=8502
+```
+
+**🎯 Tính năng Demo Mode:**
+- **🎭 Mock LLM**: Không cần Ollama hay API keys
+- **📝 Complete Workflow**: Toàn bộ quy trình extraction
+- **🎯 Real Interaction**: Human evaluation thật (approve/reject/edit)
+- **📊 Full Results**: Kết quả hoàn chỉnh với export
+- **⚡ Instant Setup**: Chạy ngay không cần cấu hình
+
+👉 **Xem hướng dẫn demo**: [DEMO_README.md](DEMO_README.md)
+
+### 🌐 Giao Diện Web (Real LLM)
+
+```bash
+# Cách 1: Sử dụng script khởi chạy
+python run_streamlit.py
+
+# Cách 2: Chạy trực tiếp Streamlit  
+streamlit run streamlit_app.py
+```
+
+**🎯 Tính năng Web Interface:**
+- **🤖 Real AI**: LLM thật với Ollama
+- **📝 Input Processing**: Nhập mô tả ý tưởng bằng sáng chế
+- **🎯 Interactive Evaluation**: Ba lựa chọn tương tác:
+  - ✅ **Approve**: Chấp nhận từ khóa và tiếp tục
+  - ❌ **Reject**: Từ chối và khởi động lại với feedback  
+  - ✏️ **Edit**: Chỉnh sửa từ khóa thủ công
+- **📊 Visual Results**: Hiển thị kết quả theo tabs
+- **💾 Export Options**: Xuất JSON/CSV cho phân tích thêm
+
+👉 **Xem hướng dẫn chi tiết**: [STREAMLIT_README.md](STREAMLIT_README.md)
+
+### 🚀 Unified Launcher
+
+```bash
+# Chọn interface từ menu tương tác
+python run_patent_agent.py
+```
+
+### 💻 Giao Diện Dòng Lệnh
 
 ```bash
 python main.py
