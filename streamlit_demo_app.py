@@ -124,12 +124,27 @@ class StreamlitDemoExtractor:
         """Streamlit UI version of step3_human_evaluation"""
         
         # Store state for UI access
-        st.session_state.extraction_state = state
-        st.session_state.current_step = 'evaluation'
+        if st.session_state.extraction_state == None:
+            st.session_state.extraction_state = state
+            st.session_state.current_step = 'evaluation'
+            
+            # Display results and get user feedback through UI
+            concept_matrix = st.session_state.extraction_state["concept_matrix"]
+            seed_keywords = st.session_state.extraction_state["seed_keywords"]
+        else:
+            concept_matrix = st.session_state.extraction_state["concept_matrix"]
+            seed_keywords = st.session_state.extraction_state["seed_keywords"]
         
-        # Display results and get user feedback through UI
-        concept_matrix = state["concept_matrix"]
-        seed_keywords = state["seed_keywords"]
+        # Initialize UI state flags if not present
+        if 'show_reject_form' not in st.session_state:
+            st.session_state.show_reject_form = False
+        if 'show_edit_form' not in st.session_state:
+            st.session_state.show_edit_form = False
+        if 'ui_interaction_id' not in st.session_state:
+            st.session_state.ui_interaction_id = 0
+        
+        # Create unique key suffix to avoid conflicts during reruns
+        key_suffix = f"_{st.session_state.ui_interaction_id}"
         
         # Display the evaluation interface
         st.markdown('<div class="step-header">🎯 HUMAN EVALUATION - YOUR DECISION REQUIRED</div>', unsafe_allow_html=True)
@@ -150,27 +165,33 @@ class StreamlitDemoExtractor:
                 st.write(f"**{field.replace('_', ' ').title()}:** {', '.join(keywords)}")
             st.markdown('</div>', unsafe_allow_html=True)
         
-        # Action buttons
-        st.markdown("### 📝 Choose your action:")
-        st.info("👆 This is where you make the critical decision about the extracted keywords!")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            if st.button("✅ Approve", key="approve_btn", help="Accept the generated keywords and proceed", type="primary"):
-                feedback = ValidationFeedback(action="approve")
-                st.session_state.validation_feedback = feedback
-                st.success("✅ Keywords approved! Continuing with workflow...")
-                time.sleep(1)  # Brief pause for user feedback
-                st.rerun()
-        
-        with col2:
-            if st.button("❌ Reject", key="reject_btn", help="Reject keywords and restart workflow", type="secondary"):
-                st.session_state.show_reject_form = True
-        
-        with col3:
-            if st.button("✏️ Edit", key="edit_btn", help="Manually modify keywords", type="secondary"):
-                st.session_state.show_edit_form = True
+        # Only show action buttons if no forms are active
+        if not st.session_state.show_reject_form and not st.session_state.show_edit_form:
+            # Action buttons
+            st.markdown("### 📝 Choose your action:")
+            st.info("👆 This is where you make the critical decision about the extracted keywords!")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                if st.button("✅ Approve", key=f"approve_btn{key_suffix}", help="Accept the generated keywords and proceed", type="primary"):
+                    feedback = ValidationFeedback(action="approve")
+                    st.session_state.validation_feedback = feedback
+                    st.success("✅ Keywords approved! Continuing with workflow...")
+                    time.sleep(1)  # Brief pause for user feedback
+                    st.rerun()
+            
+            with col2:
+                if st.button("❌ Reject", key=f"reject_btn{key_suffix}", help="Reject keywords and restart workflow", type="secondary"):
+                    st.session_state.show_reject_form = True
+                    st.session_state.ui_interaction_id += 1
+                    st.rerun()
+            
+            with col3:
+                if st.button("✏️ Edit", key=f"edit_btn{key_suffix}", help="Manually modify keywords", type="secondary"):
+                    st.session_state.show_edit_form = True
+                    st.session_state.ui_interaction_id += 1
+                    st.rerun()
         
         # Handle reject form
         if st.session_state.get('show_reject_form', False):
@@ -179,12 +200,13 @@ class StreamlitDemoExtractor:
                 feedback_text = st.text_area(
                     "Optional: Provide feedback for improvement:",
                     help="Explain what's wrong with the keywords to help improve the next iteration",
-                    placeholder="e.g., 'Keywords are too generic' or 'Missing specific technical terms'"
+                    placeholder="e.g., 'Keywords are too generic' or 'Missing specific technical terms'",
+                    key=f"reject_feedback_text{key_suffix}"
                 )
                 
                 col1, col2 = st.columns(2)
                 with col1:
-                    if st.button("Submit Rejection", type="primary", key="submit_reject"):
+                    if st.button("Submit Rejection", type="primary", key=f"submit_reject{key_suffix}"):
                         feedback = ValidationFeedback(action="reject", feedback=feedback_text)
                         st.session_state.validation_feedback = feedback
                         st.session_state.show_reject_form = False
@@ -193,7 +215,7 @@ class StreamlitDemoExtractor:
                         st.rerun()
                 
                 with col2:
-                    if st.button("Cancel", key="cancel_reject"):
+                    if st.button("Cancel", key=f"cancel_reject{key_suffix}"):
                         st.session_state.show_reject_form = False
                         st.rerun()
         
@@ -212,7 +234,7 @@ class StreamlitDemoExtractor:
                     new_keywords = st.text_input(
                         f"{field_name}:",
                         value=current_str,
-                        key=f"edit_{field}",
+                        key=f"edit_{field}{key_suffix}",
                         help="Enter keywords separated by commas"
                     )
                     
@@ -224,7 +246,7 @@ class StreamlitDemoExtractor:
                 
                 col1, col2 = st.columns(2)
                 with col1:
-                    if st.button("Save Changes", type="primary", key="save_edit"):
+                    if st.button("Save Changes", type="primary", key=f"save_edit{key_suffix}"):
                         edited_keywords = SeedKeywords(**edited_data)
                         feedback = ValidationFeedback(action="edit", edited_keywords=edited_keywords)
                         st.session_state.validation_feedback = feedback
@@ -234,7 +256,7 @@ class StreamlitDemoExtractor:
                         st.rerun()
                 
                 with col2:
-                    if st.button("Cancel Edit", key="cancel_edit"):
+                    if st.button("Cancel Edit", key=f"cancel_edit{key_suffix}"):
                         st.session_state.show_edit_form = False
                         st.rerun()
         
@@ -257,7 +279,15 @@ def main():
     
     # Header
     st.markdown('<div class="main-header">🚀 Patent AI Agent - Demo Interface</div>', unsafe_allow_html=True)
-    
+    # --- default state flags ---
+    if 'run_demo' not in st.session_state:
+        st.session_state.run_demo = False
+    if 'saved_input_text' not in st.session_state:
+        st.session_state.saved_input_text = ""
+    if 'selected_model' not in st.session_state:
+        st.session_state.selected_model = None
+    if 'use_checkpointer_flag' not in st.session_state:
+        st.session_state.use_checkpointer_flag = False
     # Demo notice
     st.markdown('''
     <div class="demo-notice">
@@ -357,145 +387,149 @@ def main():
     with col2:
         if st.button("🚀 Start Demo Extraction", type="primary", use_container_width=True):
             if input_text.strip():
-                # Clear previous results
-                for key in ['extraction_state', 'current_step', 'validation_feedback', 'final_results', 'show_reject_form', 'show_edit_form']:
+                # Clear all workflow-related session state
+                for key in ['extraction_state','current_step','validation_feedback','final_results',
+                            'show_reject_form','show_edit_form','awaiting_user_input','ui_interaction_id']:
                     if key in st.session_state:
                         del st.session_state[key]
-                
-                # Initialize the demo extractor
-                demo_extractor = StreamlitDemoExtractor(
-                    model_name=selected_model,
-                    use_checkpointer=use_checkpointer
-                )
-                
-                # Show progress
-                with st.spinner("🔄 Running demo extraction process..."):
-                    try:
-                        # Run extraction with UI evaluation
-                        results = demo_extractor.run_extraction_with_ui_evaluation(input_text)
-                        
-                        if results:
-                            st.success("✅ Demo extraction completed successfully!")
-                            
-                            # Display results
-                            st.markdown("## 📊 Demo Results")
-                            st.info("💡 **Note**: All results below are generated by mock AI responses for demonstration purposes.")
-                            
-                            # Results tabs
-                            tab1, tab2, tab3, tab4 = st.tabs(["📋 Summary", "🔑 Keywords", "🔍 Queries", "🔗 URLs"])
-                            
-                            with tab1:
-                                st.markdown("### Concept Matrix")
-                                if results.get('concept_matrix'):
-                                    concept_dict = results['concept_matrix'].dict()
-                                    concept_df = pd.DataFrame([concept_dict])
-                                    st.dataframe(concept_df, use_container_width=True)
-                                
-                                st.markdown("### Technical Summary")
-                                if results.get('summary_text'):
-                                    st.text_area("Generated Summary:", results['summary_text'], height=150, disabled=True)
-                                
-                                st.markdown("### IPC Classifications")
-                                if results.get('ipcs'):
-                                    ipc_data = []
-                                    for ipc in results['ipcs']:
-                                        ipc_data.append({
-                                            'Category': ipc.get('category', 'N/A'),
-                                            'Score': f"{ipc.get('score', 0):.2f}"
-                                        })
-                                    if ipc_data:
-                                        ipc_df = pd.DataFrame(ipc_data)
-                                        st.dataframe(ipc_df, use_container_width=True)
-                            
-                            with tab2:
-                                st.markdown("### Seed Keywords")
-                                if results.get('seed_keywords'):
-                                    keywords_dict = results['seed_keywords'].dict()
-                                    for category, keywords in keywords_dict.items():
-                                        st.write(f"**{category.replace('_', ' ').title()}:** {', '.join(keywords)}")
-                                
-                                st.markdown("### Expanded Keywords & Synonyms")
-                                if results.get('final_keywords'):
-                                    for original_keyword, synonyms in results['final_keywords'].items():
-                                        with st.expander(f"🔍 {original_keyword}"):
-                                            st.write(f"**Synonyms & Related Terms:** {', '.join(synonyms)}")
-                            
-                            with tab3:
-                                st.markdown("### Generated Search Queries")
-                                if results.get('queries') and hasattr(results['queries'], 'queries'):
-                                    for i, query in enumerate(results['queries'].queries, 1):
-                                        st.code(f"Query {i}: {query}", language="text")
-                                        
-                                st.info("💡 These Boolean queries can be used in patent databases like Google Patents, USPTO, or EPO.")
-                            
-                            with tab4:
-                                st.markdown("### Patent URLs Found")
-                                if results.get('final_url'):
-                                    url_data = []
-                                    for url_info in results['final_url']:
-                                        if isinstance(url_info, dict):
-                                            url_data.append({
-                                                'URL': url_info.get('url', 'N/A'),
-                                                'Scenario Score': f"{url_info.get('user_scenario', 0):.2f}",
-                                                'Problem Score': f"{url_info.get('user_problem', 0):.2f}"
-                                            })
-                                    
-                                    if url_data:
-                                        urls_df = pd.DataFrame(url_data)
-                                        st.dataframe(urls_df, use_container_width=True)
-                                        
-                                        # Download button for URLs
-                                        csv = urls_df.to_csv(index=False)
-                                        st.download_button(
-                                            "📥 Download Demo URLs as CSV",
-                                            csv,
-                                            f"demo_patent_urls_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                                            "text/csv"
-                                        )
-                                        
-                                st.warning("⚠️ **Demo Note**: These are mock patent URLs for demonstration purposes only.")
-                            
-                            # Download complete results
-                            st.markdown("---")
-                            col1, col2, col3 = st.columns([1, 2, 1])
-                            with col2:
-                                # Prepare results for download
-                                download_data = {}
-                                for key, value in results.items():
-                                    if value is None:
-                                        continue
-                                    if hasattr(value, "dict"):
-                                        download_data[key] = value.dict()
-                                    elif isinstance(value, (dict, list, str, int, float, bool)):
-                                        download_data[key] = value
-                                    else:
-                                        download_data[key] = str(value)
-                                
-                                # Add demo metadata
-                                download_data["_demo_metadata"] = {
-                                    "demo_mode": True,
-                                    "mock_responses": True,
-                                    "generated_at": datetime.datetime.now().isoformat(),
-                                    "note": "This data was generated by mock AI responses for demonstration purposes"
-                                }
-                                
-                                json_str = json.dumps(download_data, indent=2, ensure_ascii=False)
-                                filename = f"demo_extraction_results_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-                                
-                                st.download_button(
-                                    "💾 Download Complete Demo Results (JSON)",
-                                    json_str,
-                                    filename,
-                                    "application/json",
-                                    use_container_width=True
-                                )
-                        
-                    except Exception as e:
-                        st.error(f"❌ Error during demo extraction: {str(e)}")
-                        st.error("Full traceback:")
-                        st.code(traceback.format_exc())
+                st.session_state.run_demo = True
+                st.session_state.saved_input_text = input_text
+                st.session_state.selected_model = selected_model
+                st.session_state.use_checkpointer_flag = use_checkpointer
             else:
                 st.warning("⚠️ Please enter a patent idea description to continue the demo.")
+                # Show progress
+    if st.session_state.get('run_demo', False):
+        demo_extractor = StreamlitDemoExtractor(
+            model_name=st.session_state.get('selected_model'),
+            use_checkpointer=st.session_state.get('use_checkpointer_flag'))
+        with st.spinner("🔄 Running demo extraction process..."):
+            try:
+                # Run extraction with UI evaluation
+                results = demo_extractor.run_extraction_with_ui_evaluation(input_text)
+                
+                if results:
+                    st.success("✅ Demo extraction completed successfully!")
+                    
+                    # Display results
+                    st.markdown("## 📊 Demo Results")
+                    st.info("💡 **Note**: All results below are generated by mock AI responses for demonstration purposes.")
+                    
+                    # Results tabs
+                    tab1, tab2, tab3, tab4 = st.tabs(["📋 Summary", "🔑 Keywords", "🔍 Queries", "🔗 URLs"])
+                    
+                    with tab1:
+                        st.markdown("### Concept Matrix")
+                        if results.get('concept_matrix'):
+                            concept_dict = results['concept_matrix'].dict()
+                            concept_df = pd.DataFrame([concept_dict])
+                            st.dataframe(concept_df, use_container_width=True)
+                        
+                        st.markdown("### Technical Summary")
+                        if results.get('summary_text'):
+                            st.text_area("Generated Summary:", results['summary_text'], height=150, disabled=True)
+                        
+                        st.markdown("### IPC Classifications")
+                        if results.get('ipcs'):
+                            ipc_data = []
+                            for ipc in results['ipcs']:
+                                ipc_data.append({
+                                    'Category': ipc.get('category', 'N/A'),
+                                    'Score': f"{ipc.get('score', 0):.2f}"
+                                })
+                            if ipc_data:
+                                ipc_df = pd.DataFrame(ipc_data)
+                                st.dataframe(ipc_df, use_container_width=True)
+                    
+                    with tab2:
+                        st.markdown("### Seed Keywords")
+                        if results.get('seed_keywords'):
+                            keywords_dict = results['seed_keywords'].dict()
+                            for category, keywords in keywords_dict.items():
+                                st.write(f"**{category.replace('_', ' ').title()}:** {', '.join(keywords)}")
+                        
+                        st.markdown("### Expanded Keywords & Synonyms")
+                        if results.get('final_keywords'):
+                            for original_keyword, synonyms in results['final_keywords'].items():
+                                with st.expander(f"🔍 {original_keyword}"):
+                                    st.write(f"**Synonyms & Related Terms:** {', '.join(synonyms)}")
+                    
+                    with tab3:
+                        st.markdown("### Generated Search Queries")
+                        if results.get('queries') and hasattr(results['queries'], 'queries'):
+                            for i, query in enumerate(results['queries'].queries, 1):
+                                st.code(f"Query {i}: {query}", language="text")
+                                
+                        st.info("💡 These Boolean queries can be used in patent databases like Google Patents, USPTO, or EPO.")
+                    
+                    with tab4:
+                        st.markdown("### Patent URLs Found")
+                        if results.get('final_url'):
+                            url_data = []
+                            for url_info in results['final_url']:
+                                if isinstance(url_info, dict):
+                                    url_data.append({
+                                        'URL': url_info.get('url', 'N/A'),
+                                        'Scenario Score': f"{url_info.get('user_scenario', 0):.2f}",
+                                        'Problem Score': f"{url_info.get('user_problem', 0):.2f}"
+                                    })
+                            
+                            if url_data:
+                                urls_df = pd.DataFrame(url_data)
+                                st.dataframe(urls_df, use_container_width=True)
+                                
+                                # Download button for URLs
+                                csv = urls_df.to_csv(index=False)
+                                st.download_button(
+                                    "📥 Download Demo URLs as CSV",
+                                    csv,
+                                    f"demo_patent_urls_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                    "text/csv"
+                                )
+                                
+                        st.warning("⚠️ **Demo Note**: These are mock patent URLs for demonstration purposes only.")
+                    
+                    # Download complete results
+                    st.markdown("---")
+                    col1, col2, col3 = st.columns([1, 2, 1])
+                    with col2:
+                        # Prepare results for download
+                        download_data = {}
+                        for key, value in results.items():
+                            if value is None:
+                                continue
+                            if hasattr(value, "dict"):
+                                download_data[key] = value.dict()
+                            elif isinstance(value, (dict, list, str, int, float, bool)):
+                                download_data[key] = value
+                            else:
+                                download_data[key] = str(value)
+                        
+                        # Add demo metadata
+                        download_data["_demo_metadata"] = {
+                            "demo_mode": True,
+                            "mock_responses": True,
+                            "generated_at": datetime.datetime.now().isoformat(),
+                            "note": "This data was generated by mock AI responses for demonstration purposes"
+                        }
+                        
+                        json_str = json.dumps(download_data, indent=2, ensure_ascii=False)
+                        filename = f"demo_extraction_results_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+                        
+                        st.download_button(
+                            "💾 Download Complete Demo Results (JSON)",
+                            json_str,
+                            filename,
+                            "application/json",
+                            use_container_width=True
+                        )
+                
+            except Exception as e:
+                st.error(f"❌ Error during demo extraction: {str(e)}")
+                st.error("Full traceback:")
+                st.code(traceback.format_exc())
+    else:
+        st.warning("⚠️ Please enter a patent idea description to continue the demo.")
     
     # Footer
     st.markdown("---")

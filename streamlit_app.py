@@ -119,12 +119,16 @@ class StreamlitPatentExtractor:
         """Streamlit UI version of step3_human_evaluation"""
         
         # Store state for UI access
-        st.session_state.extraction_state = state
-        st.session_state.current_step = 'evaluation'
-        
-        # Display results and get user feedback through UI
-        concept_matrix = state["concept_matrix"]
-        seed_keywords = state["seed_keywords"]
+        if 'extraction_state' not in st.session_state:
+            st.session_state.extraction_state = state
+            st.session_state.current_step = 'evaluation'
+            
+            # Display results and get user feedback through UI
+            concept_matrix = state["concept_matrix"]
+            seed_keywords = state["seed_keywords"]
+        else:
+            concept_matrix = st.session_state.extraction_state["concept_matrix"]
+            seed_keywords = st.session_state.extraction_state["seed_keywords"]
         
         # Display the evaluation interface
         st.markdown('<div class="step-header">🎯 FINAL EVALUATION - HUMAN DECISION</div>', unsafe_allow_html=True)
@@ -331,116 +335,115 @@ def main():
                     use_checkpointer=use_checkpointer
                 )
                 
-                # Show progress
-                with st.spinner("🔄 Processing patent idea..."):
-                    try:
-                        # Run extraction with UI evaluation
-                        results = st_extractor.run_extraction_with_ui_evaluation(input_text)
+    # Show progress
+    with st.spinner("🔄 Processing patent idea..."):
+        try:
+            # Run extraction with UI evaluation
+            results = st_extractor.run_extraction_with_ui_evaluation(input_text)
+            
+            if results:
+                st.success("✅ Extraction completed successfully!")
+                
+                # Display results
+                st.markdown("## 📊 Final Results")
+                
+                # Results tabs
+                tab1, tab2, tab3, tab4 = st.tabs(["📋 Summary", "🔑 Keywords", "🔍 Queries", "🔗 URLs"])
+                
+                with tab1:
+                    st.markdown("### Concept Matrix")
+                    if results.get('concept_matrix'):
+                        concept_df = pd.DataFrame([results['concept_matrix'].dict()])
+                        st.dataframe(concept_df, use_container_width=True)
+                    
+                    st.markdown("### IPC Classifications")
+                    if results.get('ipcs'):
+                        ipc_data = []
+                        for ipc in results['ipcs']:
+                            ipc_data.append({
+                                'Category': ipc.get('category', 'N/A'),
+                                'Score': ipc.get('score', 'N/A')
+                            })
+                        if ipc_data:
+                            ipc_df = pd.DataFrame(ipc_data)
+                            st.dataframe(ipc_df, use_container_width=True)
+                
+                with tab2:
+                    st.markdown("### Seed Keywords")
+                    if results.get('seed_keywords'):
+                        keywords_dict = results['seed_keywords'].dict()
+                        for category, keywords in keywords_dict.items():
+                            st.write(f"**{category.replace('_', ' ').title()}:** {', '.join(keywords)}")
+                    
+                    st.markdown("### Expanded Keywords")
+                    if results.get('final_keywords'):
+                        for original_keyword, synonyms in results['final_keywords'].items():
+                            with st.expander(f"🔍 {original_keyword}"):
+                                st.write(f"**Synonyms & Related Terms:** {', '.join(synonyms)}")
+                
+                with tab3:
+                    st.markdown("### Generated Search Queries")
+                    if results.get('queries') and hasattr(results['queries'], 'queries'):
+                        for i, query in enumerate(results['queries'].queries, 1):
+                            st.write(f"**Query {i}:** `{query}`")
+                
+                with tab4:
+                    st.markdown("### Patent URLs Found")
+                    if results.get('final_url'):
+                        url_data = []
+                        for url_info in results['final_url']:
+                            if isinstance(url_info, dict):
+                                url_data.append({
+                                    'URL': url_info.get('url', 'N/A'),
+                                    'Scenario Score': url_info.get('user_scenario', 0),
+                                    'Problem Score': url_info.get('user_problem', 0)
+                                })
                         
-                        if results:
-                            st.success("✅ Extraction completed successfully!")
+                        if url_data:
+                            urls_df = pd.DataFrame(url_data)
+                            st.dataframe(urls_df, use_container_width=True)
                             
-                            # Display results
-                            st.markdown("## 📊 Final Results")
-                            
-                            # Results tabs
-                            tab1, tab2, tab3, tab4 = st.tabs(["📋 Summary", "🔑 Keywords", "🔍 Queries", "🔗 URLs"])
-                            
-                            with tab1:
-                                st.markdown("### Concept Matrix")
-                                if results.get('concept_matrix'):
-                                    concept_df = pd.DataFrame([results['concept_matrix'].dict()])
-                                    st.dataframe(concept_df, use_container_width=True)
-                                
-                                st.markdown("### IPC Classifications")
-                                if results.get('ipcs'):
-                                    ipc_data = []
-                                    for ipc in results['ipcs']:
-                                        ipc_data.append({
-                                            'Category': ipc.get('category', 'N/A'),
-                                            'Score': ipc.get('score', 'N/A')
-                                        })
-                                    if ipc_data:
-                                        ipc_df = pd.DataFrame(ipc_data)
-                                        st.dataframe(ipc_df, use_container_width=True)
-                            
-                            with tab2:
-                                st.markdown("### Seed Keywords")
-                                if results.get('seed_keywords'):
-                                    keywords_dict = results['seed_keywords'].dict()
-                                    for category, keywords in keywords_dict.items():
-                                        st.write(f"**{category.replace('_', ' ').title()}:** {', '.join(keywords)}")
-                                
-                                st.markdown("### Expanded Keywords")
-                                if results.get('final_keywords'):
-                                    for original_keyword, synonyms in results['final_keywords'].items():
-                                        with st.expander(f"🔍 {original_keyword}"):
-                                            st.write(f"**Synonyms & Related Terms:** {', '.join(synonyms)}")
-                            
-                            with tab3:
-                                st.markdown("### Generated Search Queries")
-                                if results.get('queries') and hasattr(results['queries'], 'queries'):
-                                    for i, query in enumerate(results['queries'].queries, 1):
-                                        st.write(f"**Query {i}:** `{query}`")
-                            
-                            with tab4:
-                                st.markdown("### Patent URLs Found")
-                                if results.get('final_url'):
-                                    url_data = []
-                                    for url_info in results['final_url']:
-                                        if isinstance(url_info, dict):
-                                            url_data.append({
-                                                'URL': url_info.get('url', 'N/A'),
-                                                'Scenario Score': url_info.get('user_scenario', 0),
-                                                'Problem Score': url_info.get('user_problem', 0)
-                                            })
-                                    
-                                    if url_data:
-                                        urls_df = pd.DataFrame(url_data)
-                                        st.dataframe(urls_df, use_container_width=True)
-                                        
-                                        # Download button for URLs
-                                        csv = urls_df.to_csv(index=False)
-                                        st.download_button(
-                                            "📥 Download URLs as CSV",
-                                            csv,
-                                            f"patent_urls_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                                            "text/csv"
-                                        )
-                            
-                            # Download complete results
-                            st.markdown("---")
-                            col1, col2, col3 = st.columns([1, 2, 1])
-                            with col2:
-                                # Prepare results for download
-                                download_data = {}
-                                for key, value in results.items():
-                                    if value is None:
-                                        continue
-                                    if hasattr(value, "dict"):
-                                        download_data[key] = value.dict()
-                                    elif isinstance(value, (dict, list, str, int, float, bool)):
-                                        download_data[key] = value
-                                    else:
-                                        download_data[key] = str(value)
-                                
-                                json_str = json.dumps(download_data, indent=2, ensure_ascii=False)
-                                filename = f"extraction_results_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-                                
-                                st.download_button(
-                                    "💾 Download Complete Results (JSON)",
-                                    json_str,
-                                    filename,
-                                    "application/json",
-                                    use_container_width=True
-                                )
-                        
-                    except Exception as e:
-                        st.error(f"❌ Error during extraction: {str(e)}")
-                        st.error("Full traceback:")
-                        st.code(traceback.format_exc())
-            else:
-                st.warning("⚠️ Please enter a patent idea description to continue.")
+                            # Download button for URLs
+                            csv = urls_df.to_csv(index=False)
+                            st.download_button(
+                                "📥 Download URLs as CSV",
+                                csv,
+                                f"patent_urls_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                "text/csv"
+                            )
+                
+                # Download complete results
+                st.markdown("---")
+                col1, col2, col3 = st.columns([1, 2, 1])
+                with col2:
+                    # Prepare results for download
+                    download_data = {}
+                    for key, value in results.items():
+                        if value is None:
+                            continue
+                        if hasattr(value, "dict"):
+                            download_data[key] = value.dict()
+                        elif isinstance(value, (dict, list, str, int, float, bool)):
+                            download_data[key] = value
+                        else:
+                            download_data[key] = str(value)
+                    
+                    json_str = json.dumps(download_data, indent=2, ensure_ascii=False)
+                    filename = f"extraction_results_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+                    
+                    st.download_button(
+                        "💾 Download Complete Results (JSON)",
+                        json_str,
+                        filename,
+                        "application/json",
+                        use_container_width=True
+                    )
+            
+        except Exception as e:
+            st.error(f"❌ Error during extraction: {str(e)}")
+            st.error("Full traceback:")
+            st.code(traceback.format_exc())
+
     
     # Footer
     st.markdown("---")
