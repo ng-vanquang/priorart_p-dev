@@ -11,8 +11,8 @@ import traceback
 from typing import Dict, Any, Optional
 import pandas as pd
 
-# Import the mock extractor instead of the real one
-from src.core.mock_extractor import MockCoreConceptExtractor, ValidationFeedback, SeedKeywords
+# Import the enhanced mock extractor with LangGraph framework
+from src.core.enhanced_mock_extractor import EnhancedMockCoreConceptExtractor, ValidationFeedback, SeedKeywords
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -77,8 +77,8 @@ class StreamlitDemoExtractor:
     """Demo version of Streamlit Patent Extractor using mock responses"""
     
     def __init__(self, model_name: str = None, use_checkpointer: bool = None):
-        # Create mock extractor with custom evaluation handler
-        self.extractor = MockCoreConceptExtractor(
+        # Create enhanced mock extractor with LangGraph multi-agent architecture
+        self.extractor = EnhancedMockCoreConceptExtractor(
             model_name=model_name,
             use_checkpointer=use_checkpointer,
             custom_evaluation_handler=self._ui_human_evaluation
