@@ -11,8 +11,11 @@ import traceback
 from typing import Dict, Any, Optional
 import pandas as pd
 
-# Import the mock extractor instead of the real one
-from src.core.mock_extractor import MockCoreConceptExtractor, ValidationFeedback, SeedKeywords, ExtractionState
+
+# Import the enhanced mock extractor with LangGraph framework
+from src.core.enhanced_mock_extractor import EnhancedMockCoreConceptExtractor, ValidationFeedback, SeedKeywords, ExtractionState
+
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -77,8 +80,9 @@ class StreamlitDemoExtractor:
     """Demo version of Streamlit Patent Extractor using mock responses"""
     
     def __init__(self, model_name: str = None, use_checkpointer: bool = None):
-        # Create mock extractor with custom evaluation handler
-        self.extractor = MockCoreConceptExtractor(
+        # Create enhanced mock extractor with LangGraph multi-agent architecture
+        logger.info(f"Creating demo extractor with model: {model_name} and use_checkpointer: {use_checkpointer}")
+        self.extractor = EnhancedMockCoreConceptExtractor(
             model_name=model_name,
             use_checkpointer=use_checkpointer,
             custom_evaluation_handler=self._ui_human_evaluation
@@ -106,7 +110,9 @@ class StreamlitDemoExtractor:
                 st.markdown('<div class="progress-box">🔄 <strong>Processing in progress...</strong><br>The mock system will simulate realistic processing times.</div>', unsafe_allow_html=True)
             
             # Run the extraction workflow
-            results = self.extractor.extract_keywords(st.session_state.extraction_state)
+
+            results = self.extractor.extract_keywords(input_text, st.session_state.extraction_state)
+
             
             # Clear progress
             progress_container.empty()
@@ -122,8 +128,10 @@ class StreamlitDemoExtractor:
     
     def _ui_human_evaluation(self, state):
         """Streamlit UI version of step3_human_evaluation"""
-        print("👤 _ui_human_evaluation")
-        
+
+        logger.info(f"Running UI human evaluation...{state}")
+
+
         # Store state for UI access
         if st.session_state.extraction_state == None:
             st.session_state.extraction_state = state
@@ -135,6 +143,8 @@ class StreamlitDemoExtractor:
         else:
             concept_matrix = st.session_state.extraction_state["concept_matrix"]
             seed_keywords = st.session_state.extraction_state["seed_keywords"]
+        # concept_matrix = state["concept_matrix"]
+        # seed_keywords = state["seed_keywords"]
         
         for key, value in st.session_state.extraction_state.items():
             print(f"{key}: {value}")
@@ -412,17 +422,23 @@ def main():
                 }
                 st.session_state.selected_model = selected_model
                 st.session_state.use_checkpointer_flag = use_checkpointer
+                st.session_state.demo_extractor = None
             else:
                 st.warning("⚠️ Please enter a patent idea description to continue the demo.")
                 # Show progress
     if st.session_state.get('run_demo', False):
-        demo_extractor = StreamlitDemoExtractor(
-            model_name=st.session_state.get('selected_model'),
-            use_checkpointer=st.session_state.get('use_checkpointer_flag'))
+        logger.info(f"Running demo extraction process...")
+        if st.session_state.demo_extractor is None:
+            st.session_state.demo_extractor = StreamlitDemoExtractor(
+                model_name=st.session_state.get('selected_model'),
+                use_checkpointer=st.session_state.get('use_checkpointer_flag'))
         with st.spinner("🔄 Running demo extraction process..."):
             try:
                 # Run extraction with UI evaluation
-                results = demo_extractor.run_extraction_with_ui_evaluation()
+
+                results = st.session_state.demo_extractor.run_extraction_with_ui_evaluation(input_text)
+
+
                 
                 if results:
                     st.success("✅ Demo extraction completed successfully!")
