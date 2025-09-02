@@ -23,15 +23,15 @@ except ImportError:
     STREAMLIT_AVAILABLE = False
 
 # Configure logging
-log_filename = f"mock_patent_extractor_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(log_filename),
-        logging.StreamHandler()
-    ]
-)
+# log_filename = f"mock_patent_extractor_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+# logging.basicConfig(
+#     level=logging.INFO,
+#     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+#     handlers=[
+#         logging.FileHandler(log_filename),
+#         logging.StreamHandler()
+#     ]
+# )
 logger = logging.getLogger(__name__)
 
 # Data Models (exact same as original)
@@ -340,21 +340,23 @@ class EnhancedMockCoreConceptExtractor:
 
         return workflow.compile()
     
-    def extract_keywords(self, initial_state: ExtractionState) -> Dict:
+    def extract_keywords(self, input_text: str, extraction_state: dict) -> Dict:
         """Run the simplified 3-step keyword extraction workflow (exact same as original)"""
-        # initial_state = ExtractionState(
-        #     input_text=input_text,
-        #     problem=None,
-        #     technical=None,
-        #     concept_matrix=None,
-        #     seed_keywords=None,
-        #     validation_feedback=None,
-        #     final_keywords=None,
-        #     ipcs=None,
-        #     summary_text=None,
-        #     queries=None,
-        #     final_url=None
-        # )
+        initial_state = ExtractionState(
+            input_text=input_text,
+            problem=extraction_state["problem"] if extraction_state else None,
+            technical=extraction_state["technical"] if extraction_state else None,
+            concept_matrix=extraction_state["concept_matrix"] if extraction_state else None,
+            seed_keywords=extraction_state["seed_keywords"] if extraction_state else None,
+            validation_feedback=extraction_state["validation_feedback"] if extraction_state else None,
+            final_keywords=extraction_state["final_keywords"] if extraction_state else None,
+            ipcs=extraction_state["ipcs"] if extraction_state else None,
+            summary_text=extraction_state["summary_text"] if extraction_state else None,
+            queries=extraction_state["queries"] if extraction_state else None,
+            final_url=extraction_state["final_url"] if extraction_state else None
+        )
+
+        logger.info(f"initial_state: {initial_state}")
         
         if self.use_checkpointer:
             config = {"configurable": {"thread_id": "mock_thread_123"}}
@@ -365,11 +367,15 @@ class EnhancedMockCoreConceptExtractor:
         # Return all ExtractionState fields
         return dict(result)
         
-    def input_normalization(self, state: ExtractionState) -> ExtractionState:
+    def input_normalization(self, initial_state: ExtractionState) -> ExtractionState:
         """Normalize and clean input text before processing (exact same logic as original)"""    
         logger.info(" Starting input normalization...")
         
         # Get normalization prompt and parser from MockPrompts
+        if initial_state["problem"] and initial_state["technical"]:
+            logger.info(" Problem and technical already exist, skipping normalization")
+            return {"problem": initial_state["problem"], "technical": initial_state["technical"], "input_text": initial_state["input_text"]}
+        
         prompt, parser = self.prompts.get_normalization_prompt_and_parser()
         response = self.llm.invoke(prompt)
 
@@ -381,13 +387,11 @@ class EnhancedMockCoreConceptExtractor:
             updated_state = {
                 "problem": normalized_input.problem,
                 "technical": normalized_input.technical,
-                "input_text": state["input_text"]
+                "input_text": initial_state["input_text"]
             }
-            state["problem"] = normalized_input.problem
-            state["technical"] = normalized_input.technical
             logger.info(f" Normalized problem: {normalized_input.problem}")
             logger.info(f" Normalized technical: {normalized_input.technical}")
-            return state
+            return updated_state
 
         except Exception as e:
             logger.error(f" Normalization parsing failed: {e}, using original input")
@@ -398,23 +402,29 @@ class EnhancedMockCoreConceptExtractor:
             updated_state = {
                 "problem": "Not mentioned.",
                 "technical": "Not mentioned.",
-                "input_text": state["input_text"]
+                "input_text": initial_state["input_text"]
             }
-            state = ExtractionState(**updated_state)
-            return state
+            # initial_state["problem"] = normalized_input.problem
+            # initial_state["technical"] = normalized_input.technical
+            return updated_state
 
-    def step0(self, state: ExtractionState) -> ExtractionState:
+    def step0(self, initial_state: ExtractionState) -> ExtractionState:
         """Initial step - pass through state (exact same as original)"""
         logger.info(" Step 0: Initial processing...")
-        return state
+        logger.info(f"initial_state: {initial_state}")
+        return initial_state
 
-    def step1_concept_extraction(self, state: ExtractionState) -> ExtractionState:
+    def step1_concept_extraction(self, initial_state: ExtractionState) -> ExtractionState:
         """Step 1: Extract concept summary from document according to fields (exact same logic as original)"""
         logger.info(" Step 1: Concept extraction...")
         
+        if initial_state["concept_matrix"]:
+            logger.info(" Concept matrix already exists, skipping concept extraction")
+            return {"concept_matrix": initial_state["concept_matrix"]}
+        
         prompt, parser = self.prompts.get_phase1_prompt_and_parser()
         response = self.llm.invoke(prompt)
-        
+        # logger.info(f"concept_matrix: {initial_state['concept_matrix']}")
         try:
             concept_data = parser.parse(response)
             concept_matrix = ConceptMatrix(**concept_data.dict())
@@ -423,17 +433,22 @@ class EnhancedMockCoreConceptExtractor:
             logger.warning(f"Parser failed: {e}, falling back to manual parsing")
             concept_matrix = self._parse_concept_response(response)
         
-        state["concept_matrix"] = concept_matrix
-        return state
+        # initial_state["alo"] = concept_matrix
+        return {"concept_matrix": concept_matrix}
 
-    def step2_keyword_generation(self, state: ExtractionState) -> ExtractionState:
+    def step2_keyword_generation(self, initial_state: ExtractionState) -> ExtractionState:
         """Step 2: Generate main keywords for each field from summary (exact same logic as original)"""
         logger.info(" Step 2: Keyword generation...")
         
-        concept_matrix = state["concept_matrix"]
+        if initial_state["seed_keywords"]:
+            logger.info(" Seed keywords already exists, skipping keyword generation")
+            return {"seed_keywords": initial_state["seed_keywords"]}
+        
+        concept_matrix = initial_state["concept_matrix"]
+        # logger.info(f"concept_matrix: {concept_matrix}")
         feedback = ""
-        if state.get("validation_feedback") and getattr(state["validation_feedback"], "feedback", None):
-            feedback = state["validation_feedback"].feedback
+        if initial_state.get("validation_feedback") and getattr(initial_state["validation_feedback"], "feedback", None):
+            feedback = initial_state["validation_feedback"].feedback
 
         prompt, parser = self.prompts.get_phase2_prompt_and_parser()
         response = self.llm.invoke(prompt)
@@ -446,16 +461,18 @@ class EnhancedMockCoreConceptExtractor:
             logger.warning(f"Parser failed: {e}, falling back to manual parsing")
             seed_keywords = self._parse_keyword_response(response)
         
-        state["seed_keywords"] = seed_keywords
-        return state
+        # initial_state["seed_keywords"] = seed_keywords
+        return {"seed_keywords": seed_keywords}
     
-    def step3_human_evaluation(self, state: ExtractionState) -> ExtractionState:
+    def step3_human_evaluation(self, initial_state: ExtractionState) -> ExtractionState:
         """Step 3: Human in the loop evaluation with three options (exact same logic as original)"""
         logger.info(" Step 3: Human evaluation...")
         
         # If custom evaluation handler is provided (e.g., for Streamlit UI), use it
+        logger.info(f"state: {initial_state}")
         if self.custom_evaluation_handler:
-            return self.custom_evaluation_handler(state)
+            logger.info(f" Using custom evaluation handler...")
+            return self.custom_evaluation_handler(initial_state)
         
         # Otherwise, use the original command-line interface
         msgs = self.validation_messages
@@ -465,8 +482,8 @@ class EnhancedMockCoreConceptExtractor:
         print(msgs["separator"])
         
         # Display final results
-        concept_matrix = state["concept_matrix"]
-        seed_keywords = state["seed_keywords"]
+        concept_matrix = initial_state["concept_matrix"]
+        seed_keywords = initial_state["seed_keywords"]
         
         print(msgs["concept_matrix_header"])
         for field, value in concept_matrix.dict().items():
@@ -496,19 +513,19 @@ class EnhancedMockCoreConceptExtractor:
                 print(msgs["invalid_action"])
         
         
-        state["validation_feedback"] = feedback
-        return state
+        # initial_state["validation_feedback"] = feedback
+        return {"validation_feedback": feedback}
 
-    def manual_editing(self, state: ExtractionState) -> ExtractionState:
+    def manual_editing(self, initial_state: ExtractionState) -> ExtractionState:
         """Allow user to manually edit keywords (exact same as original)"""
         logger.info(" Manual editing...")
-        feedback = state["validation_feedback"]
+        feedback = initial_state["validation_feedback"]
         
         if feedback.edited_keywords:
-            state["seed_keywords"] = feedback.edited_keywords
+            # initial_state["seed_keywords"] = feedback.edited_keywords
+            return {"seed_keywords": feedback.edited_keywords}
         
-        state["seed_keywords"] = feedback.edited_keywords
-        return state
+        return {"seed_keywords": feedback.edited_keywords}
     
     def _get_manual_edits(self, current_keywords: SeedKeywords) -> ValidationFeedback:
         """Get manual edits from user (exact same as original)"""
@@ -564,7 +581,7 @@ class EnhancedMockCoreConceptExtractor:
         feedback = state["validation_feedback"]
         return feedback.action if feedback else "approve"
     
-    def gen_key(self, state: ExtractionState) -> ExtractionState:
+    def gen_key(self, initial_state: ExtractionState) -> ExtractionState:
         """Generate synonyms and related terms for keywords (mock version with same structure)"""
         logger.info(" Generating synonyms and related terms...")
         
@@ -597,17 +614,17 @@ class EnhancedMockCoreConceptExtractor:
             sys_keys[keyword] = synonyms
             logger.info(f" Generated {len(synonyms)} terms for '{keyword}': {synonyms}")
 
-        concept_matrix = state["concept_matrix"].dict()
-        seed_keywords = state["seed_keywords"].dict()
+        concept_matrix = initial_state["concept_matrix"].dict()
+        seed_keywords = initial_state["seed_keywords"].dict()
 
         for context in concept_matrix:
             for key in seed_keywords[context]:
                 generate_synonyms(key, concept_matrix[context])
 
-        state["final_keywords"] = sys_keys
-        return state
+        # initial_state["final_keywords"] = sys_keys
+        return {"final_keywords": sys_keys}
 
-    def summary_prompt_and_parser(self, state: ExtractionState) -> ExtractionState:
+    def summary_prompt_and_parser(self, initial_state: ExtractionState) -> ExtractionState:
         """Generate summary using prompt and parser (exact same logic as original)"""
         logger.info(" Generating summary...")
         
@@ -616,38 +633,38 @@ class EnhancedMockCoreConceptExtractor:
         concept_data = parser.parse(response)
         
         logger.info(" Summary generation completed.")
-        state["summary_text"] = concept_data
-        return state
+        # initial_state["summary_text"] = concept_data
+        return {"summary_text": concept_data}
 
-    def call_ipcs_api(self, state: ExtractionState) -> ExtractionState:
+    def call_ipcs_api(self, initial_state: ExtractionState) -> ExtractionState:
         """Call IPC classification API (mock version)"""
         logger.info(" Calling IPC classification API...")
         
-        ipcs = mock_get_ipc_predictions(state["summary_text"])
+        ipcs = mock_get_ipc_predictions(initial_state["summary_text"])
         logger.info(f" IPC classification results: {ipcs}")
-        state["ipcs"] = ipcs
-        return state
+        # initial_state["ipcs"] = ipcs
+        return {"ipcs": ipcs}
 
-    def genQuery(self, state: ExtractionState) -> ExtractionState:
+    def genQuery(self, initial_state: ExtractionState) -> ExtractionState:
         """Generate search queries (exact same logic as original)"""
         logger.info(" Generating search queries...")
         
-        keys = state["seed_keywords"]
-        problem_purpose_keys = str([i for key in keys.problem_purpose for i in state["final_keywords"][key]])
-        object_system_keys = str([i for key in keys.object_system for i in state["final_keywords"][key]])
-        environment_field_keys = str([i for key in keys.environment_field for i in state["final_keywords"][key]])
-        fipc = str([i["category"] for i in state["ipcs"]])
-        problem = state.get("problem", "")
+        keys = initial_state["seed_keywords"]
+        problem_purpose_keys = str([i for key in keys.problem_purpose for i in initial_state["final_keywords"][key]])
+        object_system_keys = str([i for key in keys.object_system for i in initial_state["final_keywords"][key]])
+        environment_field_keys = str([i for key in keys.environment_field for i in initial_state["final_keywords"][key]])
+        fipc = str([i["category"] for i in initial_state["ipcs"]])
+        problem = initial_state.get("problem", "")
 
         prompt, parser = self.prompts.get_queries_prompt_and_parser()
         response = self.llm.invoke(prompt)
         concept_data = parser.parse(response)
         
         logger.info(f" Generated {len(concept_data.queries)} search queries")
-        state["queries"] = concept_data
-        return state
+        # initial_state["queries"] = concept_data
+        return {"queries": concept_data}
 
-    def genUrl(self, state: ExtractionState) -> ExtractionState:
+    def genUrl(self, initial_state: ExtractionState) -> ExtractionState:
         """Generate URLs from queries using Brave search (mock version)"""
         logger.info(" Generating URLs from search queries...")
         
@@ -663,7 +680,7 @@ class EnhancedMockCoreConceptExtractor:
         ]
         
         final_url = []
-        queries = state["queries"].queries
+        queries = initial_state["queries"].queries
         logger.info(f" Searching for URLs using {len(queries)} queries")
         
         # Simulate search for each query
@@ -675,15 +692,15 @@ class EnhancedMockCoreConceptExtractor:
                     final_url.append(mock_patent_urls.pop(0))
 
         logger.info(f" Found {len(final_url)} URLs from search results")
-        state["final_url"] = final_url
-        return state
+        # initial_state["final_url"] = final_url
+        return {"final_url": final_url}
 
-    def evalUrl(self, state: ExtractionState) -> ExtractionState:
+    def evalUrl(self, initial_state: ExtractionState) -> ExtractionState:
         """Evaluate URLs for relevance (mock version with same structure)"""
         logger.info(" Evaluating URLs for relevance...")
         
         final_url = []
-        urls_to_evaluate = state["final_url"]
+        urls_to_evaluate = initial_state["final_url"]
         logger.info(f" Evaluating {len(urls_to_evaluate)} URLs for relevance")
         
         for url in urls_to_evaluate:
@@ -696,7 +713,7 @@ class EnhancedMockCoreConceptExtractor:
                 # Mock evaluation process
                 time.sleep(random.uniform(0.5, 1.0))  # Simulate processing time
                 
-                result = mock_parse_idea_input(state["input_text"])
+                result = mock_parse_idea_input(initial_state["input_text"])
                 temp = mock_lay_thong_tin_patent(url)
                 ex_text = mock_prompt(temp['abstract'], temp['description'], temp['claims'])
                 res = self.llm.invoke(ex_text)
@@ -717,8 +734,8 @@ class EnhancedMockCoreConceptExtractor:
                 final_url.append(temp_score)
         
         logger.info(f" Completed evaluation of {len(final_url)} URLs")
-        state["final_url"] = final_url
-        return state
+        # initial_state["final_url"] = final_url
+        return {"final_url": final_url}
 
 # Export the enhanced mock extractor
 __all__ = ['EnhancedMockCoreConceptExtractor', 'ValidationFeedback', 'SeedKeywords', 'ConceptMatrix', 'NormalizationOutput']
