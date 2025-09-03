@@ -88,7 +88,7 @@ class StreamlitDemoExtractor:
             custom_evaluation_handler=self._ui_human_evaluation
         )
         
-    def run_extraction_with_ui_evaluation(self) -> Dict:
+    def run_extraction_with_ui_evaluation(self, input_text: str) -> Dict:
         """Run extraction workflow with Streamlit UI for human evaluation"""
         
         # Initialize session state for workflow control
