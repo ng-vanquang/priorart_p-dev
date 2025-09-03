@@ -7,7 +7,7 @@ import json
 import datetime
 import time
 import random
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TypedDict
 from pydantic import BaseModel, Field
 
 # Mock data models (same as original)
@@ -56,9 +56,9 @@ class QueriesResponse(BaseModel):
         description="List of queries. Leave empty if none."
     )
 
-class ExtractionState(dict):
-    """Mock extraction state"""
-    pass
+# class ExtractionState(dict):
+#     """Mock extraction state"""
+#     pass
 
 class MockLLM:
     """Mock LLM that simulates realistic responses"""
@@ -199,6 +199,19 @@ class MockTavilySearch:
         ]
         
         return {"results": mock_results[:self.max_results]}
+class ExtractionState(TypedDict):
+    """Simplified state for LangGraph workflow"""
+    input_text: str
+    problem: Optional[str]
+    technical: Optional[str]
+    summary_text: str
+    ipcs: Any 
+    concept_matrix: Optional[ConceptMatrix]
+    seed_keywords: Optional[SeedKeywords]
+    validation_feedback: Optional[ValidationFeedback]
+    final_keywords: dict
+    queries: list
+    final_url: list
 
 class MockCoreConceptExtractor:
     """Mock version of CoreConceptExtractor that simulates the full workflow"""
@@ -228,38 +241,39 @@ class MockCoreConceptExtractor:
             "https://patents.google.com/patent/US10567890B2"
         ]
     
-    def extract_keywords(self, input_text: str) -> Dict:
+    def extract_keywords(self, state : dict) -> Dict:
         """Run the complete mock extraction workflow"""
         print("🔄 Starting mock extraction workflow...")
-        
+        print(state)
         # Step 1: Input normalization
-        print("📝 Step 1: Input normalization...")
-        time.sleep(1)
-        normalization_response = self.llm.invoke("normalization prompt")
-        normalized_data = json.loads(normalization_response.strip())
-        normalized_input = NormalizationOutput(**normalized_data)
+        if state["problem"] is None or state["technical"] is None:
+            print("📝 Step 1: Input normalization...")
+            time.sleep(1)
+            normalization_response = self.llm.invoke("normalization prompt")
+            normalized_data = json.loads(normalization_response.strip())
+            normalized_input = NormalizationOutput(**normalized_data)
+            
+            state["problem"] = "normalized_input.problem"
+            state["technical"] = "normalized_input.technical"
         
-        state = ExtractionState({
-            "input_text": input_text,
-            "problem": normalized_input.problem,
-            "technical": normalized_input.technical
-        })
         
         # Step 2: Concept extraction
-        print("🎯 Step 2: Concept extraction...")
-        time.sleep(1)
-        concept_response = self.llm.invoke("concept matrix prompt")
-        concept_data = json.loads(concept_response.strip())
-        concept_matrix = ConceptMatrix(**concept_data)
-        state["concept_matrix"] = concept_matrix
+        if state["concept_matrix"] is None:
+            print("🎯 Step 2: Concept extraction...")
+            time.sleep(1)
+            concept_response = self.llm.invoke("concept matrix prompt")
+            concept_data = json.loads(concept_response.strip())
+            concept_matrix = ConceptMatrix(**concept_data)
+            state["concept_matrix"] = concept_matrix
         
         # Step 3: Keyword generation
-        print("🔑 Step 3: Keyword generation...")
-        time.sleep(1)
-        keyword_response = self.llm.invoke("seed keywords prompt")
-        keyword_data = json.loads(keyword_response.strip())
-        seed_keywords = SeedKeywords(**keyword_data)
-        state["seed_keywords"] = seed_keywords
+        if state["seed_keywords"] is None:
+            print("🔑 Step 3: Keyword generation...")
+            time.sleep(1)
+            keyword_response = self.llm.invoke("seed keywords prompt")
+            keyword_data = json.loads(keyword_response.strip())
+            seed_keywords = SeedKeywords(**keyword_data)
+            state["seed_keywords"] = seed_keywords
         
         # Step 4: Human evaluation (use custom handler if provided)
         print("👤 Step 4: Human evaluation...")
@@ -273,7 +287,7 @@ class MockCoreConceptExtractor:
         # Check if we need to restart due to rejection
         if state.get("validation_feedback") and state["validation_feedback"].action == "reject":
             print("🔄 Restarting workflow due to rejection...")
-            return self.extract_keywords(input_text)  # Recursive call
+            return self.extract_keywords(state)  # Recursive call
         
         # Handle manual edits
         if state.get("validation_feedback") and state["validation_feedback"].action == "edit":
