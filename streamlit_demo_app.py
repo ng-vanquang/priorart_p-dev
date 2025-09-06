@@ -88,7 +88,7 @@ class StreamlitDemoExtractor:
             custom_evaluation_handler=self._ui_human_evaluation
         )
         
-    def run_extraction_with_ui_evaluation(self) -> Dict:
+    def run_extraction_with_ui_evaluation(self, input_text: str) -> Dict:
         """Run extraction workflow with Streamlit UI for human evaluation"""
         
         # Initialize session state for workflow control
@@ -102,6 +102,8 @@ class StreamlitDemoExtractor:
             st.session_state.final_results = None
         if 'awaiting_user_input' not in st.session_state:
             st.session_state.awaiting_user_input = False
+        if 'processing_after_approval' not in st.session_state:
+            st.session_state.processing_after_approval = False
             
         try:
             # Show progress container
@@ -110,6 +112,14 @@ class StreamlitDemoExtractor:
                 st.markdown('<div class="progress-box">🔄 <strong>Processing in progress...</strong><br>The mock system will simulate realistic processing times.</div>', unsafe_allow_html=True)
             
             # Run the extraction workflow
+            if st.session_state.processing_after_approval:
+                self.display_state(st.session_state.extraction_state)
+                with st.spinner("🔄 Reviewing your keywords and generating final results..."):
+                    results = self.extractor.extract_keywords(input_text, st.session_state.extraction_state)
+            else:
+                with st.spinner("🔄 Analysis you idea and generating keywords..."):
+                    results = self.extractor.extract_keywords(input_text, st.session_state.extraction_state)
+
 
             results = self.extractor.extract_keywords(input_text, st.session_state.extraction_state)
 
@@ -126,11 +136,50 @@ class StreamlitDemoExtractor:
             st.code(traceback.format_exc())
             return None
     
+    def display_state(self, state):
+        """Streamlit UI version of step3_human_evaluation"""
+
+        logger.info(f"Running UI human evaluation...{state}")
+
+
+        # Store state for UI access
+        concept_matrix = state["concept_matrix"]
+        seed_keywords = state["seed_keywords"]
+        
+        
+        
+        # Display the evaluation interface
+        st.markdown('<div class="step-header">🎯 HUMAN EVALUATION - YOUR DECISION REQUIRED</div>', unsafe_allow_html=True)
+        
+        # Show concept matrix
+        st.markdown("### 📋 Concept Matrix")
+        with st.container():
+            st.markdown('<div class="concept-box">', unsafe_allow_html=True)
+            for field, value in concept_matrix.dict().items():
+                st.write(f"**{field.replace('_', ' ').title()}:** {value}")
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Show seed keywords
+        st.markdown("### 🔑 Generated Keywords")
+        with st.container():
+            st.markdown('<div class="keyword-box">', unsafe_allow_html=True)
+            for field, keywords in seed_keywords.dict().items():
+                st.write(f"**{field.replace('_', ' ').title()}:** {', '.join(keywords)}")
+            st.markdown('</div>', unsafe_allow_html=True)
+
     def _ui_human_evaluation(self, state):
         """Streamlit UI version of step3_human_evaluation"""
 
         logger.info(f"Running UI human evaluation...{state}")
 
+        if st.session_state.get('processing_after_approval', False):
+            # Just return the existing feedback without showing UI
+            if st.session_state.validation_feedback:
+                feedback = st.session_state.validation_feedback
+                state["validation_feedback"] = feedback
+                return {"validation_feedback": feedback}
+            # If no feedback yet, continue to show the evaluation UI
+            pass
 
         # Store state for UI access
         if st.session_state.extraction_state == None:
@@ -156,6 +205,8 @@ class StreamlitDemoExtractor:
             st.session_state.show_edit_form = False
         if 'ui_interaction_id' not in st.session_state:
             st.session_state.ui_interaction_id = 0
+        if 'processing_after_approval' not in st.session_state:
+            st.session_state.processing_after_approval = False
         
         # Create unique key suffix to avoid conflicts during reruns
         key_suffix = f"_{st.session_state.ui_interaction_id}"
@@ -179,6 +230,16 @@ class StreamlitDemoExtractor:
                 st.write(f"**{field.replace('_', ' ').title()}:** {', '.join(keywords)}")
             st.markdown('</div>', unsafe_allow_html=True)
         
+        # If processing after approval, don't show the evaluation UI again
+        if st.session_state.get('processing_after_approval', False):
+            # Just return the existing feedback without showing UI
+            if st.session_state.validation_feedback:
+                feedback = st.session_state.validation_feedback
+                state["validation_feedback"] = feedback
+                return {"validation_feedback": feedback}
+            # If no feedback yet, continue to show the evaluation UI
+            pass
+        
         # Only show action buttons if no forms are active
         if not st.session_state.show_reject_form and not st.session_state.show_edit_form:
             # Action buttons
@@ -191,6 +252,7 @@ class StreamlitDemoExtractor:
                 if st.button("✅ Approve", key=f"approve_btn{key_suffix}", help="Accept the generated keywords and proceed", type="primary"):
                     feedback = ValidationFeedback(action="approve")
                     st.session_state.validation_feedback = feedback
+                    st.session_state.processing_after_approval = True
                     st.success("✅ Keywords approved! Continuing with workflow...")
                     time.sleep(1)  # Brief pause for user feedback
                     st.rerun()
@@ -265,6 +327,7 @@ class StreamlitDemoExtractor:
                         feedback = ValidationFeedback(action="edit", edited_keywords=edited_keywords)
                         st.session_state.validation_feedback = feedback
                         st.session_state.show_edit_form = False
+                        st.session_state.processing_after_approval = True
                         st.success("✏️ Keywords manually edited! Continuing with your changes...")
                         time.sleep(1)
                         st.rerun()
@@ -274,8 +337,8 @@ class StreamlitDemoExtractor:
                         st.session_state.show_edit_form = False
                         st.rerun()
         
-        # Wait for user action
-        if st.session_state.validation_feedback is None:
+        # Wait for user action (only if not processing after approval)
+        if st.session_state.validation_feedback is None and not st.session_state.get('processing_after_approval', False):
             st.info("👆 Please choose an action above to continue the workflow...")
             st.stop()
         
@@ -283,7 +346,7 @@ class StreamlitDemoExtractor:
         feedback = st.session_state.validation_feedback
         state["validation_feedback"] = feedback
         
-        # Reset for next time
+        # Reset for next time (but keep processing flag for spinner)
         st.session_state.validation_feedback = None
         
         return {"validation_feedback": feedback}
@@ -302,6 +365,8 @@ def main():
         st.session_state.selected_model = None
     if 'use_checkpointer_flag' not in st.session_state:
         st.session_state.use_checkpointer_flag = False
+    if 'processing_after_approval' not in st.session_state:
+        st.session_state.processing_after_approval = False
     # Demo notice
     st.markdown('''
     <div class="demo-notice">
@@ -403,23 +468,12 @@ def main():
             if input_text.strip():
                 # Clear all workflow-related session state
                 for key in ['extraction_state','current_step','validation_feedback','final_results',
-                            'show_reject_form','show_edit_form','awaiting_user_input','ui_interaction_id']:
+                            'show_reject_form','show_edit_form','awaiting_user_input','ui_interaction_id',
+                            'processing_after_approval']:
                     if key in st.session_state:
                         del st.session_state[key]
                 st.session_state.run_demo = True
-                st.session_state.extraction_state = {
-                    "input_text": input_text,
-                    "problem": None,
-                    "technical": None,
-                    "concept_matrix": None,
-                    "seed_keywords": None,
-                    "validation_feedback": None,
-                    "final_keywords": None,
-                    "ipcs": None,
-                    "summary_text": None,
-                    "queries": None,
-                    "final_url": None
-                }
+                st.session_state.extraction_state = None
                 st.session_state.selected_model = selected_model
                 st.session_state.use_checkpointer_flag = use_checkpointer
                 st.session_state.demo_extractor = None
@@ -432,134 +486,142 @@ def main():
             st.session_state.demo_extractor = StreamlitDemoExtractor(
                 model_name=st.session_state.get('selected_model'),
                 use_checkpointer=st.session_state.get('use_checkpointer_flag'))
-        with st.spinner("🔄 Running demo extraction process..."):
-            try:
-                # Run extraction with UI evaluation
+        # Show appropriate spinner based on processing state
+        spinner_text = "🚀 Processing your decision and generating final results..." if st.session_state.get('processing_after_approval', False) else "🔄 Running demo extraction process..."
+        
+        # with st.spinner(spinner_text):
+        #     if st.session_state.get('processing_after_approval', False):
+        #         st.info("⏳ Continuing with the extraction workflow after your approval...")
+            
+        try:
+            # Run extraction with UI evaluation
 
-                results = st.session_state.demo_extractor.run_extraction_with_ui_evaluation(input_text)
+            results = st.session_state.demo_extractor.run_extraction_with_ui_evaluation(input_text)
 
 
+            
+            if results:
+                # Clear processing flag when results are ready
+                st.session_state.processing_after_approval = False
+                st.success("✅ Demo extraction completed successfully!")
+            
+            # Display results
+            st.markdown("## 📊 Demo Results")
+            st.info("💡 **Note**: All results below are generated by mock AI responses for demonstration purposes.")
+            
+            # Results tabs
+            tab1, tab2, tab3, tab4 = st.tabs(["📋 Summary", "🔑 Keywords", "🔍 Queries", "🔗 URLs"])
+            
+            with tab1:
+                st.markdown("### Concept Matrix")
+                if results.get('concept_matrix'):
+                    concept_dict = results['concept_matrix'].dict()
+                    concept_df = pd.DataFrame([concept_dict])
+                    st.dataframe(concept_df, use_container_width=True)
                 
-                if results:
-                    st.success("✅ Demo extraction completed successfully!")
-                    
-                    # Display results
-                    st.markdown("## 📊 Demo Results")
-                    st.info("💡 **Note**: All results below are generated by mock AI responses for demonstration purposes.")
-                    
-                    # Results tabs
-                    tab1, tab2, tab3, tab4 = st.tabs(["📋 Summary", "🔑 Keywords", "🔍 Queries", "🔗 URLs"])
-                    
-                    with tab1:
-                        st.markdown("### Concept Matrix")
-                        if results.get('concept_matrix'):
-                            concept_dict = results['concept_matrix'].dict()
-                            concept_df = pd.DataFrame([concept_dict])
-                            st.dataframe(concept_df, use_container_width=True)
+                st.markdown("### Technical Summary")
+                if results.get('summary_text'):
+                    st.text_area("Generated Summary:", results['summary_text'], height=150, disabled=True)
+                
+                st.markdown("### IPC Classifications")
+                if results.get('ipcs'):
+                    ipc_data = []
+                    for ipc in results['ipcs']:
+                        ipc_data.append({
+                            'Category': ipc.get('category', 'N/A'),
+                            'Score': f"{ipc.get('score', 0):.2f}"
+                        })
+                    if ipc_data:
+                        ipc_df = pd.DataFrame(ipc_data)
+                        st.dataframe(ipc_df, use_container_width=True)
+            
+            with tab2:
+                st.markdown("### Seed Keywords")
+                if results.get('seed_keywords'):
+                    keywords_dict = results['seed_keywords'].dict()
+                    for category, keywords in keywords_dict.items():
+                        st.write(f"**{category.replace('_', ' ').title()}:** {', '.join(keywords)}")
+                
+                st.markdown("### Expanded Keywords & Synonyms")
+                if results.get('final_keywords'):
+                    for original_keyword, synonyms in results['final_keywords'].items():
+                        with st.expander(f"🔍 {original_keyword}"):
+                            st.write(f"**Synonyms & Related Terms:** {', '.join(synonyms)}")
+            
+            with tab3:
+                st.markdown("### Generated Search Queries")
+                if results.get('queries') and hasattr(results['queries'], 'queries'):
+                    for i, query in enumerate(results['queries'].queries, 1):
+                        st.code(f"Query {i}: {query}", language="text")
                         
-                        st.markdown("### Technical Summary")
-                        if results.get('summary_text'):
-                            st.text_area("Generated Summary:", results['summary_text'], height=150, disabled=True)
-                        
-                        st.markdown("### IPC Classifications")
-                        if results.get('ipcs'):
-                            ipc_data = []
-                            for ipc in results['ipcs']:
-                                ipc_data.append({
-                                    'Category': ipc.get('category', 'N/A'),
-                                    'Score': f"{ipc.get('score', 0):.2f}"
-                                })
-                            if ipc_data:
-                                ipc_df = pd.DataFrame(ipc_data)
-                                st.dataframe(ipc_df, use_container_width=True)
+                st.info("💡 These Boolean queries can be used in patent databases like Google Patents, USPTO, or EPO.")
+            
+            with tab4:
+                st.markdown("### Patent URLs Found")
+                if results.get('final_url'):
+                    url_data = []
+                    for url_info in results['final_url']:
+                        if isinstance(url_info, dict):
+                            url_data.append({
+                                'URL': url_info.get('url', 'N/A'),
+                                'Scenario Score': f"{url_info.get('user_scenario', 0):.2f}",
+                                'Problem Score': f"{url_info.get('user_problem', 0):.2f}"
+                            })
                     
-                    with tab2:
-                        st.markdown("### Seed Keywords")
-                        if results.get('seed_keywords'):
-                            keywords_dict = results['seed_keywords'].dict()
-                            for category, keywords in keywords_dict.items():
-                                st.write(f"**{category.replace('_', ' ').title()}:** {', '.join(keywords)}")
+                    if url_data:
+                        urls_df = pd.DataFrame(url_data)
+                        st.dataframe(urls_df, use_container_width=True)
                         
-                        st.markdown("### Expanded Keywords & Synonyms")
-                        if results.get('final_keywords'):
-                            for original_keyword, synonyms in results['final_keywords'].items():
-                                with st.expander(f"🔍 {original_keyword}"):
-                                    st.write(f"**Synonyms & Related Terms:** {', '.join(synonyms)}")
-                    
-                    with tab3:
-                        st.markdown("### Generated Search Queries")
-                        if results.get('queries') and hasattr(results['queries'], 'queries'):
-                            for i, query in enumerate(results['queries'].queries, 1):
-                                st.code(f"Query {i}: {query}", language="text")
-                                
-                        st.info("💡 These Boolean queries can be used in patent databases like Google Patents, USPTO, or EPO.")
-                    
-                    with tab4:
-                        st.markdown("### Patent URLs Found")
-                        if results.get('final_url'):
-                            url_data = []
-                            for url_info in results['final_url']:
-                                if isinstance(url_info, dict):
-                                    url_data.append({
-                                        'URL': url_info.get('url', 'N/A'),
-                                        'Scenario Score': f"{url_info.get('user_scenario', 0):.2f}",
-                                        'Problem Score': f"{url_info.get('user_problem', 0):.2f}"
-                                    })
-                            
-                            if url_data:
-                                urls_df = pd.DataFrame(url_data)
-                                st.dataframe(urls_df, use_container_width=True)
-                                
-                                # Download button for URLs
-                                csv = urls_df.to_csv(index=False)
-                                st.download_button(
-                                    "📥 Download Demo URLs as CSV",
-                                    csv,
-                                    f"demo_patent_urls_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                                    "text/csv"
-                                )
-                                
-                        st.warning("⚠️ **Demo Note**: These are mock patent URLs for demonstration purposes only.")
-                    
-                    # Download complete results
-                    st.markdown("---")
-                    col1, col2, col3 = st.columns([1, 2, 1])
-                    with col2:
-                        # Prepare results for download
-                        download_data = {}
-                        for key, value in results.items():
-                            if value is None:
-                                continue
-                            if hasattr(value, "dict"):
-                                download_data[key] = value.dict()
-                            elif isinstance(value, (dict, list, str, int, float, bool)):
-                                download_data[key] = value
-                            else:
-                                download_data[key] = str(value)
-                        
-                        # Add demo metadata
-                        download_data["_demo_metadata"] = {
-                            "demo_mode": True,
-                            "mock_responses": True,
-                            "generated_at": datetime.datetime.now().isoformat(),
-                            "note": "This data was generated by mock AI responses for demonstration purposes"
-                        }
-                        
-                        json_str = json.dumps(download_data, indent=2, ensure_ascii=False)
-                        filename = f"demo_extraction_results_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-                        
+                        # Download button for URLs
+                        csv = urls_df.to_csv(index=False)
                         st.download_button(
-                            "💾 Download Complete Demo Results (JSON)",
-                            json_str,
-                            filename,
-                            "application/json",
-                            use_container_width=True
+                            "📥 Download Demo URLs as CSV",
+                            csv,
+                            f"demo_patent_urls_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            "text/csv"
                         )
+                        
+                st.warning("⚠️ **Demo Note**: These are mock patent URLs for demonstration purposes only.")
+            
+            # Download complete results
+            st.markdown("---")
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                # Prepare results for download
+                download_data = {}
+                for key, value in results.items():
+                    if value is None:
+                        continue
+                    if hasattr(value, "dict"):
+                        download_data[key] = value.dict()
+                    elif isinstance(value, (dict, list, str, int, float, bool)):
+                        download_data[key] = value
+                    else:
+                        download_data[key] = str(value)
                 
-            except Exception as e:
-                st.error(f"❌ Error during demo extraction: {str(e)}")
-                st.error("Full traceback:")
-                st.code(traceback.format_exc())
+                # Add demo metadata
+                download_data["_demo_metadata"] = {
+                    "demo_mode": True,
+                    "mock_responses": True,
+                    "generated_at": datetime.datetime.now().isoformat(),
+                    "note": "This data was generated by mock AI responses for demonstration purposes"
+                }
+                
+                json_str = json.dumps(download_data, indent=2, ensure_ascii=False)
+                filename = f"demo_extraction_results_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+                
+                st.download_button(
+                    "💾 Download Complete Demo Results (JSON)",
+                    json_str,
+                    filename,
+                    "application/json",
+                    use_container_width=True
+                )
+            
+        except Exception as e:
+            st.error(f"❌ Error during demo extraction: {str(e)}")
+            st.error("Full traceback:")
+            st.code(traceback.format_exc())
     else:
         st.warning("⚠️ Please enter a patent idea description to continue the demo.")
     
